@@ -1,0 +1,32 @@
+services:
+  backend:
+    build: ./backend
+    container_name: pgplanadvisor-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs/backend:/var/log/pgplanadvisor/backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  frontend:
+    build: ./frontend
+    container_name: pgplanadvisor-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./logs/frontend:/var/log/pgplanadvisor/frontend
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
