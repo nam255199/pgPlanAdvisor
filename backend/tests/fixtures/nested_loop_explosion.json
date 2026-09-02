@@ -1,0 +1,35 @@
+{
+  "Plan": {
+    "Node Type": "Nested Loop",
+    "Join Type": "Inner",
+    "Startup Cost": 0.0,
+    "Total Cost": 900000.0,
+    "Plan Rows": 5000,
+    "Actual Rows": 5000,
+    "Actual Total Time": 250000.0,
+    "Actual Loops": 1,
+    "Plans": [
+      {
+        "Node Type": "Seq Scan",
+        "Relation Name": "customers",
+        "Alias": "c",
+        "Plan Rows": 5000,
+        "Actual Rows": 5000,
+        "Actual Total Time": 5.0,
+        "Actual Loops": 1
+      },
+      {
+        "Node Type": "Seq Scan",
+        "Relation Name": "orders",
+        "Alias": "o",
+        "Filter": "(o.customer_id = c.id)",
+        "Plan Rows": 1,
+        "Actual Rows": 1,
+        "Actual Total Time": 49.9,
+        "Actual Loops": 5000
+      }
+    ]
+  },
+  "Planning Time": 0.5,
+  "Execution Time": 250010.0
+}

@@ -5,8 +5,16 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    environment:
+      # Uncomment / set to change behavior. See README.md "Configuration" for the full list.
+      # - PGPA_API_KEY=change-me
+      - PGPA_HISTORY_ENABLED=${PGPA_HISTORY_ENABLED:-false}
+      - PGPA_HISTORY_DB_PATH=/app/data/pgplanadvisor.db
+      - PGPA_LOG_LEVEL=${PGPA_LOG_LEVEL:-INFO}
+      - PGPA_CORS_ORIGINS=${PGPA_CORS_ORIGINS:-["http://localhost:5173"]}
     volumes:
       - ./logs/backend:/var/log/pgplanadvisor/backend
+      - ./data/backend:/app/data
     logging:
       driver: json-file
       options:

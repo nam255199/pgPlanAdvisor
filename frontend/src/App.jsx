@@ -1,10 +1,13 @@
-import React, { useState } from "react";
+import { ClipboardList, DatabaseZap, Download, GitBranch, History, Settings as SettingsIcon, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { DatabaseZap, GitBranch, ClipboardList, Sparkles } from "lucide-react";
-import { analyzePlan } from "./lib/api";
 import FindingCard from "./components/FindingCard";
+import HistoryPanel from "./components/HistoryPanel";
 import PlanTable from "./components/PlanTable";
 import PlanTree from "./components/PlanTree";
+import SettingsPanel from "./components/SettingsPanel";
+import { analyzePlan, downloadTextFile, exportMarkdown } from "./lib/api";
+import { getSaveByDefault, setSaveByDefault } from "./lib/settings";
 import "./style.css";
 
 const sample = `[
@@ -52,12 +55,16 @@ function App() {
   const [activeTab, setActiveTab] = useState("advisor");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [save, setSave] = useState(getSaveByDefault());
+  const [label, setLabel] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
 
   async function run() {
     setLoading(true);
     setError("");
     try {
-      const data = await analyzePlan(planText, query);
+      const data = await analyzePlan(planText, query, { save, label: label || null });
       setResult(data);
       setActiveTab("advisor");
     } catch (e) {
@@ -67,41 +74,99 @@ function App() {
     }
   }
 
+  async function doExport() {
+    setExporting(true);
+    setError("");
+    try {
+      const markdown = result ? await exportMarkdown(planText, query) : null;
+      if (markdown) downloadTextFile(`pgplanadvisor-report-${Date.now()}.md`, markdown);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function toggleSave(checked) {
+    setSave(checked);
+    setSaveByDefault(checked);
+  }
+
   return (
     <main>
       <header className="topbar">
         <div>
-          <div className="brand"><DatabaseZap size={34} /> pgPlanAdvisor</div>
+          <div className="brand">
+            <DatabaseZap size={34} /> pgPlanAdvisor
+          </div>
           <p>PostgreSQL EXPLAIN ANALYZE advisor for DBAs: paste plan, explain bottlenecks, visualize the tree.</p>
         </div>
-        <div className="command">
-          Recommended: <code>EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)</code>
+        <div className="topbar-right">
+          <div className="command">
+            Recommended: <code>EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)</code>
+          </div>
+          <button className="icon-btn" title="Settings" onClick={() => setShowSettings(true)}>
+            <SettingsIcon size={18} />
+          </button>
         </div>
       </header>
 
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+
       <section className="layout">
         <aside className="input-card">
-          <h2><ClipboardList size={20}/> Paste Plan</h2>
+          <h2>
+            <ClipboardList size={20} /> Paste Plan
+          </h2>
           <label>SQL or notes</label>
-          <textarea className="query" value={query} onChange={e => setQuery(e.target.value)} />
+          <textarea className="query" value={query} onChange={(e) => setQuery(e.target.value)} />
 
           <label>EXPLAIN output</label>
-          <textarea className="plan" value={planText} onChange={e => setPlanText(e.target.value)} />
+          <textarea className="plan" value={planText} onChange={(e) => setPlanText(e.target.value)} />
+
+          <div className="save-row">
+            <label className="checkbox-label">
+              <input type="checkbox" checked={save} onChange={(e) => toggleSave(e.target.checked)} />
+              Save to history
+            </label>
+            {save && (
+              <input
+                className="label-input"
+                placeholder="Optional label"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+              />
+            )}
+          </div>
 
           <button onClick={run} disabled={loading}>
-            <Sparkles size={18}/> {loading ? "Explaining..." : "Explain Plan"}
+            <Sparkles size={18} /> {loading ? "Explaining..." : "Explain Plan"}
           </button>
           {error && <pre className="error">{error}</pre>}
         </aside>
 
         <section className="workspace">
           <nav className="tabs">
-            <button className={activeTab === "advisor" ? "active" : ""} onClick={() => setActiveTab("advisor")}>Advisor</button>
-            <button className={activeTab === "tree" ? "active" : ""} onClick={() => setActiveTab("tree")}><GitBranch size={16}/> Tree Visualizer</button>
-            <button className={activeTab === "raw" ? "active" : ""} onClick={() => setActiveTab("raw")}>Raw JSON</button>
+            <button className={activeTab === "advisor" ? "active" : ""} onClick={() => setActiveTab("advisor")}>
+              Advisor
+            </button>
+            <button className={activeTab === "tree" ? "active" : ""} onClick={() => setActiveTab("tree")}>
+              <GitBranch size={16} /> Tree Visualizer
+            </button>
+            <button className={activeTab === "raw" ? "active" : ""} onClick={() => setActiveTab("raw")}>
+              Raw JSON
+            </button>
+            <button className={activeTab === "history" ? "active" : ""} onClick={() => setActiveTab("history")}>
+              <History size={16} /> History
+            </button>
+            {result && (
+              <button className="ghost-btn export-btn" onClick={doExport} disabled={exporting}>
+                <Download size={14} /> {exporting ? "Exporting..." : "Export Markdown"}
+              </button>
+            )}
           </nav>
 
-          {!result && (
+          {!result && activeTab !== "history" && (
             <div className="hero panel">
               <h1>Explain PostgreSQL plans beautifully.</h1>
               <p>Paste DBA output from EXPLAIN ANALYZE and pgPlanAdvisor will highlight bottlenecks, checks, and remediation ideas.</p>
@@ -112,14 +177,23 @@ function App() {
             <>
               <div className="summary panel">
                 <h1>{result.summary}</h1>
-                <p>Execution: {result.total_runtime_ms} ms · Planning: {result.planning_time_ms} ms</p>
+                <p>
+                  Execution: {result.total_runtime_ms.toFixed(2)} ms · Planning: {result.planning_time_ms.toFixed(2)} ms
+                  {result.saved && <span className="saved-pill">Saved to history</span>}
+                </p>
               </div>
               <PlanTable nodes={result.nodes} />
               <div className="panel">
                 <h2>DBA Checklist</h2>
-                <ul className="checklist">{result.investigation_checklist.map((x, i) => <li key={i}>{x}</li>)}</ul>
+                <ul className="checklist">
+                  {result.investigation_checklist.map((x, i) => (
+                    <li key={i}>{x}</li>
+                  ))}
+                </ul>
               </div>
-              {result.top_findings.map((f, i) => <FindingCard finding={f} key={i} />)}
+              {result.top_findings.map((f, i) => (
+                <FindingCard finding={f} key={i} />
+              ))}
             </>
           )}
 
@@ -130,6 +204,15 @@ function App() {
               <h2>Normalized Plan JSON</h2>
               <pre className="json">{JSON.stringify(result.normalized_plan, null, 2)}</pre>
             </div>
+          )}
+
+          {activeTab === "history" && (
+            <HistoryPanel
+              onLoad={(loaded) => {
+                setResult(loaded);
+                setActiveTab("advisor");
+              }}
+            />
           )}
         </section>
       </section>

@@ -1,0 +1,10 @@
+Nested Loop  (cost=0.43..1543.21 rows=100 width=64) (actual time=0.05..1000.40 rows=50000 loops=1)
+  ->  Seq Scan on orders  (cost=0.00..900.00 rows=100 width=32) (actual time=0.02..900.50 rows=50000 loops=1)
+        Filter: (status = 'pending'::text)
+        Rows Removed by Filter: 100000
+        Buffers: shared hit=500 read=12000
+        I/O Timings: shared read=350.200
+  ->  Index Scan using customers_pkey on customers  (cost=0.29..0.31 rows=1 width=32) (actual time=0.001..0.001 rows=1 loops=50000)
+        Index Cond: (id = orders.customer_id)
+Planning Time: 2.100 ms
+Execution Time: 1000.400 ms
