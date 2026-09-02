@@ -1,0 +1,15 @@
+{
+  "Plan": {
+    "Node Type": "Seq Scan",
+    "Relation Name": "big_table",
+    "Alias": "big_table",
+    "Plan Rows": 100,
+    "Actual Rows": 100,
+    "Actual Total Time": 50.0,
+    "Actual Loops": 1,
+    "Shared Hit Blocks": 100,
+    "Shared Read Blocks": 9000
+  },
+  "Planning Time": 0.2,
+  "Execution Time": 51.0
+}

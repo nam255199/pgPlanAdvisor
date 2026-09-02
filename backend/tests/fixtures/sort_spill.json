@@ -1,0 +1,31 @@
+{
+  "Plan": {
+    "Node Type": "Sort",
+    "Sort Key": ["orders.created_at"],
+    "Sort Method": "external merge",
+    "Sort Disk KB": 81920,
+    "Startup Cost": 1000.0,
+    "Total Cost": 1200.0,
+    "Plan Rows": 200000,
+    "Actual Rows": 200000,
+    "Actual Total Time": 1500.0,
+    "Actual Loops": 1,
+    "Temp Read Blocks": 10240,
+    "Temp Written Blocks": 10240,
+    "Temp Write Time": 220.0,
+    "Plans": [
+      {
+        "Node Type": "Seq Scan",
+        "Relation Name": "orders",
+        "Alias": "orders",
+        "Plan Rows": 200000,
+        "Actual Rows": 200000,
+        "Actual Total Time": 300.0,
+        "Actual Loops": 1,
+        "Shared Hit Blocks": 8000
+      }
+    ]
+  },
+  "Planning Time": 0.8,
+  "Execution Time": 1520.0
+}

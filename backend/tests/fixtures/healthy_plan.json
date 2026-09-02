@@ -1,0 +1,16 @@
+{
+  "Plan": {
+    "Node Type": "Index Scan",
+    "Index Name": "customers_pkey",
+    "Relation Name": "customers",
+    "Alias": "customers",
+    "Index Cond": "(id = 42)",
+    "Plan Rows": 1,
+    "Actual Rows": 1,
+    "Actual Total Time": 0.03,
+    "Actual Loops": 1,
+    "Shared Hit Blocks": 3
+  },
+  "Planning Time": 0.1,
+  "Execution Time": 0.05
+}

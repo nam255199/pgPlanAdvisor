@@ -1,0 +1,50 @@
+{
+  "Plan": {
+    "Node Type": "Hash Join",
+    "Join Type": "Inner",
+    "Startup Cost": 500.0,
+    "Total Cost": 9000.0,
+    "Plan Rows": 10000,
+    "Actual Rows": 250000,
+    "Actual Total Time": 2200.0,
+    "Actual Loops": 1,
+    "Hash Cond": "(orders.customer_id = customers.id)",
+    "Plans": [
+      {
+        "Node Type": "Seq Scan",
+        "Relation Name": "orders",
+        "Alias": "orders",
+        "Plan Rows": 250000,
+        "Actual Rows": 250000,
+        "Actual Total Time": 400.0,
+        "Actual Loops": 1
+      },
+      {
+        "Node Type": "Hash",
+        "Startup Cost": 300.0,
+        "Total Cost": 300.0,
+        "Plan Rows": 200000,
+        "Actual Rows": 200000,
+        "Actual Total Time": 800.0,
+        "Actual Loops": 1,
+        "Hash Batches": 8,
+        "Hash Memory KB": 4096,
+        "Temp Read Blocks": 5000,
+        "Temp Written Blocks": 5000,
+        "Plans": [
+          {
+            "Node Type": "Seq Scan",
+            "Relation Name": "customers",
+            "Alias": "customers",
+            "Plan Rows": 200000,
+            "Actual Rows": 200000,
+            "Actual Total Time": 250.0,
+            "Actual Loops": 1
+          }
+        ]
+      }
+    ]
+  },
+  "Planning Time": 1.4,
+  "Execution Time": 2210.0
+}

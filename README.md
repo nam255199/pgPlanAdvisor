@@ -1,330 +1,193 @@
-
 # pgPlanAdvisor
 
-**pgPlanAdvisor** is a PostgreSQL execution-plan advisor for DBAs.
+[![CI](https://github.com/nam255199/pgPlanAdvisor/actions/workflows/ci.yml/badge.svg)](https://github.com/nam255199/pgPlanAdvisor/actions/workflows/ci.yml)
 
-A DBA can paste output from:
+**pgPlanAdvisor** is a PostgreSQL `EXPLAIN` plan advisor for DBAs. Paste
+the output of
 
 ```sql
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
 SELECT ...;
 ```
 
-Then click **Explain Plan** to get:
+and get back a bottleneck summary, a DBA checklist, an expensive-node
+table, a visual plan tree, and a set of findings with evidence and
+concrete remediation steps (index suggestions, `work_mem` sizing, "this
+is a correlated subquery, rewrite it as a JOIN", and more) - each backed
+by an independently-testable rule. See [`ARCHITECTURE.md`](ARCHITECTURE.md)
+for the full rule catalog and how the rule engine is put together.
 
-- Bottleneck summary
-- DBA checklist
-- Expensive node table
-- Findings with evidence
-- Recommendations
-- A beautiful plan-tree visualizer tab
-- Raw normalized JSON tab
+Text `EXPLAIN` output is also accepted (best-effort parsing), but `FORMAT
+JSON` is strongly recommended: it round-trips exactly, where text parsing
+is necessarily an approximation.
 
----
+## Features
 
-## 1. Recommended PostgreSQL Command
+- **Bottleneck detection** across access paths, cardinality estimates,
+  memory spills, physical I/O, join strategy, and correlated subqueries -
+  see the [rule catalog](ARCHITECTURE.md#rule-catalog).
+- **Plan tree visualizer** with per-node timing, row estimates, buffers,
+  and conditions.
+- **Markdown report export** - paste into a ticket or runbook, with or
+  without server-side history enabled.
+- **Optional analysis history** (SQLite-backed): save, browse, and
+  re-open past analyses.
+- **Configurable rule thresholds** via environment variables - tune
+  sensitivity without forking the analyzer.
+- **Optional API key auth** and **rate limiting** for shared/hosted
+  deployments.
+- Versioned JSON API (`/api/v1`), request correlation IDs, structured
+  logging.
 
-For best analysis, use:
-
-```sql
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT ...
-```
-
-Why this format?
-
-- `ANALYZE` gives real runtime and row counts.
-- `BUFFERS` shows I/O behavior.
-- `VERBOSE` adds more object details.
-- `FORMAT JSON` gives accurate structured data for visualization.
-
-Text EXPLAIN is accepted, but JSON format is strongly recommended.
-
----
-
-## 2. Deploy with Docker Compose
-
-### Step 1: Unzip
+## Quickstart: Docker Compose
 
 ```bash
-unzip pgplanadvisor.zip
-cd pgplanadvisor
+git clone https://github.com/nam255199/pgPlanAdvisor.git
+cd pgPlanAdvisor
+docker compose up --build
 ```
 
-### Step 2: Build and start
+- UI: <http://localhost:5173>
+- API docs (Swagger UI): <http://localhost:8000/docs>
+- Health check: `curl http://localhost:8000/health`
 
-```bash
-sudo docker compose up --build
-```
-
-### Step 3: Open the UI
-
-If running locally:
-
-```text
-http://localhost:5173
-```
-
-If running on a remote server through SSH tunnel:
+Running on a remote server over SSH:
 
 ```bash
 ssh -L 5173:localhost:5173 -L 8000:localhost:8000 your_user@your_server
 ```
 
-Then open on your laptop:
+then open `http://localhost:5173` locally.
 
-```text
-http://localhost:5173
-```
-
-Backend API docs:
-
-```text
-http://localhost:8000/docs
-```
-
----
-
-## 3. Verify Services
-
-Check containers:
+To enable saved history, set `PGPA_HISTORY_ENABLED=true` before starting
+(see [Configuration](#configuration)):
 
 ```bash
-sudo docker compose ps
+PGPA_HISTORY_ENABLED=true docker compose up --build
 ```
 
-Check backend health:
+## Quickstart: local development (no Docker)
 
 ```bash
-curl http://localhost:8000/health
-```
-
-Expected:
-
-```json
-{"status":"ok","app":"pgPlanAdvisor"}
-```
-
----
-
-## 4. Use the App
-
-1. Open the UI.
-2. Paste SQL or notes in the first box.
-3. Paste EXPLAIN output in the second box.
-4. Click **Explain Plan**.
-5. Review the **Advisor** tab.
-6. Open **Tree Visualizer** to inspect the execution plan tree.
-7. Open **Raw JSON** if you need normalized plan details.
-
----
-
-## 5. Run Backend Locally Without Docker
-
-```bash
+# Backend
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
 
----
-
-## 6. Run Frontend Locally Without Docker
-
-```bash
+# Frontend (separate terminal)
 cd frontend
 npm install
 npm run dev
 ```
 
-Open:
+## Configuration
 
-```text
-http://localhost:5173
-```
+Every setting is an environment variable, prefixed `PGPA_`, all optional
+(see `backend/.env.example`). Service-level settings (`app/config.py`
+`Settings`):
 
----
+| Variable | Default | Purpose |
+|---|---|---|
+| `PGPA_LOG_LEVEL` | `INFO` | Log verbosity |
+| `PGPA_LOG_JSON` | `false` | JSON-formatted logs (for log aggregators) instead of plain text |
+| `PGPA_CORS_ORIGINS` | `["*"]` | Allowed CORS origins, as a JSON array |
+| `PGPA_MAX_PLAN_BYTES` | `5000000` | Reject larger plan payloads with a 413 |
+| `PGPA_API_KEY` | unset | If set, requires a matching `X-API-Key` header on `/api/v1/*` |
+| `PGPA_RATE_LIMIT_ENABLED` | `true` | Enable the in-memory rate limiter |
+| `PGPA_RATE_LIMIT_REQUESTS` / `PGPA_RATE_LIMIT_WINDOW_SECONDS` | `60` / `60` | N requests per window per client IP |
+| `PGPA_HISTORY_ENABLED` | `false` | Enable SQLite-backed saved-analysis history |
+| `PGPA_HISTORY_DB_PATH` | `./data/pgplanadvisor.db` | SQLite file location |
+| `PGPA_HISTORY_MAX_ROWS` | `500` | Oldest rows are trimmed beyond this |
 
-## 7. Test Backend
+Rule thresholds (`app/config.py` `Thresholds`, also `PGPA_`-prefixed, e.g.
+`PGPA_SEQ_SCAN_MIN_ROWS=5000`) - see the class docstring in
+`backend/app/config.py` for the full list and defaults.
+
+## API
+
+All endpoints are under `/api/v1` except `/health`. Full interactive docs
+at `/docs` (Swagger) or `/redoc` once the backend is running.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | Liveness check |
+| `POST` | `/api/v1/analyze` | Analyze a plan; `{"plan": ..., "query": "...", "save": false, "label": null}` |
+| `POST` | `/api/v1/analyze/export` | Analyze and return a Markdown report directly |
+| `GET` | `/api/v1/history` | List saved analyses (404 if history is disabled) |
+| `GET` | `/api/v1/history/{id}` | Fetch one saved analysis |
+| `DELETE` | `/api/v1/history/{id}` | Delete one saved analysis |
+| `GET` | `/api/v1/history/{id}/export` | Saved analysis as a Markdown file |
+
+`plan` accepts EXPLAIN JSON (object, or the `[{...}]` array psql/JSON
+output produces), a JSON string, or text EXPLAIN output.
+
+## Testing
 
 ```bash
+# Backend: 45 tests (parser, rules, engine, API, history, auth, rate limiting)
 cd backend
-pip install -r requirements.txt
-pytest
+pip install -e ".[dev]"
+ruff check app tests   # lint
+mypy app                # type-check
+pytest --cov=app        # tests + coverage
+
+# Frontend: 21 tests (format/sort helpers, settings, API error handling)
+cd frontend
+npm install
+npm run lint
+npm run test
+npm run build
 ```
 
----
+CI (`.github/workflows/ci.yml`) runs all of the above plus a Docker image
+build for both services on every push/PR.
 
-## 8. Troubleshooting
+## Logging
 
-### Docker Compose YAML error
-
-Make sure you are using the latest project package.
-
-Check file size:
+Containers write structured logs to stdout (captured by Docker's `json-file`
+driver, rotated at 20MB × 5 files) and additionally to `./logs/backend/` and
+`./logs/frontend/` on the host via bind mounts. Every request gets a short
+correlation ID, echoed as the `X-Request-ID` response header and attached
+to that request's log lines - useful when someone reports "my analyze call
+failed" and you need to find it in the logs.
 
 ```bash
-ls -lh docker-compose.yml
-cat docker-compose.yml
+docker compose logs -f              # all services
+./scripts/logs.sh backend           # just backend
+tail -f logs/backend/backend.log    # host-side log file
 ```
 
-It should contain `backend` and `frontend` services.
+Containers use `restart: unless-stopped`, so they survive SSH disconnects
+and restart after a host reboot unless explicitly stopped
+(`docker compose down`).
 
-### Browser opens but analysis fails
+## Architecture
 
-Check backend is reachable:
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the request flow, the
+pluggable rule engine design, the full rule catalog, and the reasoning
+behind a few scope decisions (SQLite over Postgres for history, in-memory
+over Redis for rate limiting).
 
-```bash
-curl http://localhost:8000/health
-```
+## Contributing
 
-If using SSH tunnel, create both tunnels:
+See [`CONTRIBUTING.md`](CONTRIBUTING.md), particularly "Adding a new
+advisory rule" - the rule engine is designed so that's a small,
+self-contained change.
 
-```bash
-ssh -L 5173:localhost:5173 -L 8000:localhost:8000 your_user@your_server
-```
+## Roadmap
 
-### Port already used
+Shipped in this pass: pluggable rule engine, six new advisory rules,
+configurable thresholds, optional auth/rate limiting, optional saved
+history, Markdown export, versioned API, structured logging, CI, and a
+much larger test suite.
 
-Change ports in `docker-compose.yml`, or stop old containers:
+Still open:
 
-```bash
-sudo docker compose down
-sudo docker ps
-```
-
----
-
-## 9. Roadmap
-
-Planned improvements:
-
-- Richer text EXPLAIN parser
-- Plan comparison before/after tuning
-- Index recommendation simulation
-- Export Markdown/PDF report
-- Saved plan history
-- Authentication
-- `pg_stat_statements` integration
+- `pg_stat_statements` integration (pull top queries from a live instance
+  rather than only pasted EXPLAIN output)
+- Plan comparison (before/after a tuning change)
+- Index recommendation simulation (`HypoPG`-style hypothetical indexes)
+- PDF export (Markdown export is available today)
 - Kubernetes manifests
-
----
-
-## Persistent Logging
-
-This version writes logs in two places:
-
-1. Docker's own rotated JSON logs
-2. Project-mounted files under `./logs`
-
-Log files on the server:
-
-```bash
-logs/backend/backend.log
-logs/frontend/frontend.log
-```
-
-Start in background:
-
-```bash
-sudo docker compose up -d --build
-```
-
-Check status:
-
-```bash
-sudo docker compose ps
-```
-
-Follow Docker logs:
-
-```bash
-sudo docker compose logs -f
-```
-
-Follow backend app log file:
-
-```bash
-tail -f logs/backend/backend.log
-```
-
-Follow frontend app log file:
-
-```bash
-tail -f logs/frontend/frontend.log
-```
-
-Use helper script:
-
-```bash
-./scripts/logs.sh all
-./scripts/logs.sh backend
-./scripts/logs.sh frontend
-```
-
-Stop:
-
-```bash
-sudo docker compose down
-```
-
-Restart:
-
-```bash
-sudo docker compose restart
-```
-
-The containers use:
-
-```yaml
-restart: unless-stopped
-```
-
-So they continue after SSH disconnect and restart after server reboot unless you explicitly stop them.
-
-Docker log rotation is configured:
-
-```yaml
-logging:
-  driver: json-file
-  options:
-    max-size: "20m"
-    max-file: "5"
-```
-
-This prevents Docker logs from growing without limit.
-
-
----
-
-## Complex Text EXPLAIN Support
-
-This version improves text EXPLAIN parsing. It extracts:
-
-- Relation/table name
-- Alias
-- Index name
-- Index condition
-- Filter
-- Join condition
-- Sort method
-- Sort disk usage
-- Buffers
-- I/O timings
-- Hash batches and memory
-- Row-estimation errors
-
-A complex sample is included:
-
-```bash
-samples/complex-text-explain.txt
-```
-
-For best results, still prefer:
-
-```sql
-EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT JSON)
-SELECT ...
-```
+- Multi-instance-safe rate limiting (Redis-backed) for horizontally-scaled deployments

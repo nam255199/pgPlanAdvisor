@@ -1,0 +1,38 @@
+{
+  "Plan": {
+    "Node Type": "Seq Scan",
+    "Relation Name": "orders",
+    "Alias": "orders",
+    "Plan Rows": 1000,
+    "Actual Rows": 1000,
+    "Actual Total Time": 5000.0,
+    "Actual Loops": 1,
+    "Plans": [
+      {
+        "Node Type": "SubPlan",
+        "Subplan Name": "SubPlan 1",
+        "Actual Total Time": 4.5,
+        "Actual Loops": 1000,
+        "Plans": [
+          {
+            "Node Type": "Aggregate",
+            "Actual Total Time": 4.5,
+            "Actual Loops": 1000,
+            "Plans": [
+              {
+                "Node Type": "Seq Scan",
+                "Relation Name": "order_items",
+                "Alias": "order_items",
+                "Filter": "(order_id = orders.id)",
+                "Actual Total Time": 4.4,
+                "Actual Loops": 1000
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "Planning Time": 0.6,
+  "Execution Time": 5001.0
+}
