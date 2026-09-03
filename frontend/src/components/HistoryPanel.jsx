@@ -1,6 +1,7 @@
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw, TrendingUp, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { deleteHistoryItem, fetchHistory, fetchHistoryItem } from "../lib/api";
+import QueryTrend from "./QueryTrend";
 import SeverityBadge from "./SeverityBadge";
 
 export default function HistoryPanel({ onLoad }) {
@@ -8,6 +9,7 @@ export default function HistoryPanel({ onLoad }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [disabled, setDisabled] = useState(false);
+  const [trendItemId, setTrendItemId] = useState(null);
 
   async function refresh() {
     setLoading(true);
@@ -74,20 +76,39 @@ export default function HistoryPanel({ onLoad }) {
       {!items.length && !loading && <p className="hint">No saved analyses yet. Check "Save to history" before running one.</p>}
       <ul className="history-list">
         {items.map((item) => (
-          <li key={item.id} className="history-item" onClick={() => open(item.id)}>
-            <div className="history-item-main">
-              {item.top_severity && <SeverityBadge severity={item.top_severity} />}
-              <div>
-                <div className="history-item-title">{item.label || item.summary}</div>
-                <div className="history-item-meta">
-                  {new Date(item.created_at).toLocaleString()} · {item.total_runtime_ms.toFixed(1)} ms ·{" "}
-                  {item.finding_count} finding(s)
+          <li key={item.id} className="history-item-wrap">
+            <div className="history-item" onClick={() => open(item.id)}>
+              <div className="history-item-main">
+                {item.top_severity && <SeverityBadge severity={item.top_severity} />}
+                <div>
+                  <div className="history-item-title">{item.label || item.summary}</div>
+                  <div className="history-item-meta">
+                    {new Date(item.created_at).toLocaleString()} · {item.total_runtime_ms.toFixed(1)} ms ·{" "}
+                    {item.finding_count} finding(s)
+                  </div>
                 </div>
               </div>
+              <div className="history-item-actions">
+                {item.query_fingerprint && (
+                  <button
+                    className="icon-btn"
+                    title="View runtime trend for this query"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      setTrendItemId((cur) => (cur === item.id ? null : item.id));
+                    }}
+                  >
+                    <TrendingUp size={16} />
+                  </button>
+                )}
+                <button className="icon-btn" title="Delete" onClick={(ev) => remove(item.id, ev)}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
-            <button className="icon-btn" title="Delete" onClick={(ev) => remove(item.id, ev)}>
-              <Trash2 size={16} />
-            </button>
+            {trendItemId === item.id && item.query_fingerprint && (
+              <QueryTrend fingerprint={item.query_fingerprint} onClose={() => setTrendItemId(null)} />
+            )}
           </li>
         ))}
       </ul>

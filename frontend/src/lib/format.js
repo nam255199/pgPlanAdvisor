@@ -39,3 +39,15 @@ export function estimateErrorRatio(node) {
   if (!node.plan_rows) return 0;
   return Math.max(node.actual_rows / node.plan_rows, node.plan_rows / Math.max(node.actual_rows, 1));
 }
+
+export function formatPct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "-";
+  return `${n > 0 ? "+" : ""}${n.toFixed(1)}%`;
+}
+
+export function formatDeltaMs(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "-";
+  return `${n > 0 ? "+" : ""}${formatMs(n)}`;
+}

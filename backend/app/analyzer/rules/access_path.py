@@ -7,6 +7,7 @@ from app.analyzer.registry import node_rule
 from app.models import Finding, Severity
 
 from .helpers import bare_relation, fnum, relation_name, severity_for_score
+from .sql_conditions import suggest_create_index
 
 
 @node_rule
@@ -38,6 +39,7 @@ def seq_scan_expensive(ctx: RuleContext) -> Finding | None:
 
     score = score_base + rows_removed / 1000 + shared_read / 100 + shared_read_time
     table = bare_relation(node)
+    ddl_suggestion = suggest_create_index(table, node.get("Filter"))
 
     return Finding(
         rule_id="seq_scan_expensive",
@@ -46,6 +48,7 @@ def seq_scan_expensive(ctx: RuleContext) -> Finding | None:
         title=f"Sequential scan may be expensive on {relation}",
         node_path=ctx.path,
         score=score,
+        ddl_suggestion=ddl_suggestion,
         evidence=[
             f"Node type: {node_type}",
             f"Relation: {relation}",
@@ -97,6 +100,7 @@ def ineffective_index_scan(ctx: RuleContext) -> Finding | None:
     table = bare_relation(node)
     loops = max(fnum(node, "Actual Loops", 1), 1)
     score = rows_removed * loops / 100
+    ddl_suggestion = suggest_create_index(table, node.get("Filter"))
 
     return Finding(
         rule_id="ineffective_index_scan",
@@ -105,6 +109,7 @@ def ineffective_index_scan(ctx: RuleContext) -> Finding | None:
         title=f"Index on {relation} is filtering out most rows it reads",
         node_path=ctx.path,
         score=score,
+        ddl_suggestion=ddl_suggestion,
         evidence=[
             f"Node type: {node_type}",
             f"Index condition selects: {examined:g} rows",

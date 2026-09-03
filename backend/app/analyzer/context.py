@@ -54,3 +54,4 @@ class PlanContext:
     planning_time_ms: float
     thresholds: Thresholds
     query: str | None = None
+    has_actual_stats: bool = True

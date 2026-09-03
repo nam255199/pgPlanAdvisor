@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { estimateErrorRatio, formatCount, formatMs, relationLabel, severityRank, sortFindingsBySeverity } from "./format";
+import {
+  estimateErrorRatio,
+  formatCount,
+  formatDeltaMs,
+  formatMs,
+  formatPct,
+  relationLabel,
+  severityRank,
+  sortFindingsBySeverity,
+} from "./format";
 
 describe("severityRank", () => {
   it("orders high > medium > low > info", () => {
@@ -83,5 +92,35 @@ describe("estimateErrorRatio", () => {
   it("computes the worse-case ratio in either direction", () => {
     expect(estimateErrorRatio({ plan_rows: 10, actual_rows: 1000 })).toBe(100);
     expect(estimateErrorRatio({ plan_rows: 1000, actual_rows: 10 })).toBe(100);
+  });
+});
+
+describe("formatPct", () => {
+  it("prefixes positive values with a plus sign", () => {
+    expect(formatPct(12.34)).toBe("+12.3%");
+  });
+
+  it("leaves negative values as-is", () => {
+    expect(formatPct(-5)).toBe("-5.0%");
+  });
+
+  it("handles non-numeric input gracefully", () => {
+    expect(formatPct(undefined)).toBe("-");
+    expect(formatPct(NaN)).toBe("-");
+  });
+});
+
+describe("formatDeltaMs", () => {
+  it("prefixes a positive delta with a plus sign", () => {
+    expect(formatDeltaMs(50)).toBe("+50.00 ms");
+  });
+
+  it("does not double up the minus sign on a negative delta", () => {
+    expect(formatDeltaMs(-50)).toBe("-50.00 ms");
+  });
+
+  it("handles non-numeric input gracefully", () => {
+    expect(formatDeltaMs(undefined)).toBe("-");
+    expect(formatDeltaMs(NaN)).toBe("-");
   });
 });
