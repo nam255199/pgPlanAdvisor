@@ -13,12 +13,22 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
+from app.analyzer.compare import compare_plans
 from app.analyzer.engine import analyze
+from app.analyzer.ingest import extract_plans_from_log
 from app.analyzer.parser import PlanParseError
 from app.analyzer.report import to_markdown
 from app.config import Settings, Thresholds, get_settings, get_thresholds
 from app.db import get_history_store
-from app.models import AnalyzeRequest, AnalyzeResponse, HistoryListResponse
+from app.models import (
+    AnalyzeRequest,
+    AnalyzeResponse,
+    BatchAnalyzeRequest,
+    BatchAnalyzeResponse,
+    CompareRequest,
+    CompareResponse,
+    HistoryListResponse,
+)
 from app.security import require_api_key
 
 logger = logging.getLogger("pgplanadvisor.api")
@@ -86,13 +96,95 @@ def analyze_and_export(
     return Response(content=markdown, media_type="text/markdown")
 
 
+@router.post("/compare", response_model=CompareResponse)
+def compare_endpoint(
+    req: CompareRequest,
+    settings: Settings = Depends(get_settings),
+    thresholds: Thresholds = Depends(get_thresholds),
+):
+    """Analyze two plans (e.g. before/after an index change) and return a
+    structural diff: per-node time/row deltas plus findings that newly
+    appeared or disappeared between the two runs."""
+    for label, req_side in (("baseline", req.baseline), ("current", req.current)):
+        approx_size = len(json.dumps(req_side.plan, default=str))
+        if approx_size > settings.max_plan_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"{label} plan payload too large ({approx_size} bytes, limit {settings.max_plan_bytes}).",
+            )
+
+    try:
+        baseline_result = analyze(req.baseline.plan, req.baseline.query, thresholds=thresholds)
+        current_result = analyze(req.current.plan, req.current.query, thresholds=thresholds)
+    except PlanParseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    baseline_result.label = req.baseline.label
+    current_result.label = req.current.label
+    return compare_plans(baseline_result, current_result, thresholds)
+
+
+@router.post("/analyze/batch", response_model=BatchAnalyzeResponse)
+def analyze_batch(
+    req: BatchAnalyzeRequest,
+    settings: Settings = Depends(get_settings),
+    thresholds: Thresholds = Depends(get_thresholds),
+):
+    """Analyze every plan found in a pasted auto_explain log excerpt at
+    once, so captured slow-query logs don't have to be split by hand."""
+    approx_size = len(req.log_text.encode("utf-8"))
+    if approx_size > settings.max_plan_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Log payload too large ({approx_size} bytes, limit {settings.max_plan_bytes}).",
+        )
+
+    entries = extract_plans_from_log(req.log_text)
+    if len(entries) > settings.max_batch_entries:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Log contains {len(entries)} plan entries, limit is {settings.max_batch_entries}. "
+            "Split the log and submit it in smaller batches.",
+        )
+
+    store = get_history_store(settings) if req.save else None
+    if req.save and store is None:
+        raise HTTPException(
+            status_code=400,
+            detail="History persistence is disabled on this server (PGPA_HISTORY_ENABLED=false).",
+        )
+
+    results: list[AnalyzeResponse] = []
+    parse_errors: list[str] = []
+    for entry in entries:
+        try:
+            result = analyze(entry.raw_text, None, thresholds=thresholds)
+        except PlanParseError as exc:
+            parse_errors.append(f"line {entry.line_number}: {exc}")
+            continue
+        except Exception as exc:  # noqa: BLE001 - one bad entry shouldn't fail the batch
+            logger.exception("Unexpected error analyzing batch entry at line %s", entry.line_number)
+            parse_errors.append(f"line {entry.line_number}: {exc}")
+            continue
+
+        if store is not None:
+            result.saved = True
+            store.save(result)
+        results.append(result)
+
+    results.sort(key=lambda r: r.total_runtime_ms, reverse=True)
+    return BatchAnalyzeResponse(entries_found=len(entries), results=results, parse_errors=parse_errors)
+
+
 @router.get("/history", response_model=HistoryListResponse)
-def list_history(limit: int = 50, offset: int = 0, settings: Settings = Depends(get_settings)):
+def list_history(
+    limit: int = 50, offset: int = 0, fingerprint: str | None = None, settings: Settings = Depends(get_settings)
+):
     store = get_history_store(settings)
     if store is None:
         raise HTTPException(status_code=404, detail="History persistence is disabled on this server.")
     limit = max(1, min(limit, 200))
-    items, total = store.list(limit=limit, offset=offset)
+    items, total = store.list(limit=limit, offset=offset, fingerprint=fingerprint)
     return HistoryListResponse(items=items, total=total)
 
 

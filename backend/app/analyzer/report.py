@@ -49,6 +49,13 @@ def to_markdown(result: AnalyzeResponse) -> str:
             lines.append("")
             lines.append(f"**Recommendation:** {f.recommendation}")
             lines.append("")
+            if f.ddl_suggestion:
+                lines.append("**Suggested DDL**")
+                lines.append("")
+                lines.append("```sql")
+                lines.append(f.ddl_suggestion)
+                lines.append("```")
+                lines.append("")
             if f.checks:
                 lines.append("**What to check**")
                 lines.append("")

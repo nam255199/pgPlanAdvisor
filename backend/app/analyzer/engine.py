@@ -15,6 +15,7 @@ from app.models import AnalyzeResponse, Finding, PlanNodeSummary
 # Importing app.analyzer.rules registers every built-in rule as a side effect.
 from . import rules  # noqa: F401
 from .context import PlanContext, RuleContext
+from .fingerprint import fingerprint_query
 from .parser import parse_plan
 from .registry import run_node_rules, run_plan_rules
 from .walker import flatten_plan, get_root_plan
@@ -47,6 +48,11 @@ def analyze(
 
     total_runtime_ms = float(parsed.get("Execution Time") or root.get("Actual Total Time") or 0)
     planning_time_ms = float(parsed.get("Planning Time") or 0)
+    # Check the value, not mere key presence: parse_text_explain always
+    # sets an "Execution Time" key, but its value is None when no
+    # "Execution Time:" line was found in the pasted text (plan-only
+    # EXPLAIN) - `in` would incorrectly read that as "has actual stats".
+    has_actual_stats = parsed.get("Execution Time") is not None or root.get("Actual Total Time") is not None
 
     by_id = {pn.node_id: pn for pn in plan_nodes}
 
@@ -123,6 +129,7 @@ def analyze(
         planning_time_ms=planning_time_ms,
         thresholds=thresholds,
         query=query,
+        has_actual_stats=has_actual_stats,
     )
     findings.extend(run_plan_rules(plan_ctx))
 
@@ -154,9 +161,11 @@ def analyze(
     return AnalyzeResponse(
         app_name="pgPlanAdvisor",
         query=query,
+        query_fingerprint=fingerprint_query(query),
         summary=summary,
         total_runtime_ms=total_runtime_ms,
         planning_time_ms=planning_time_ms,
+        has_actual_stats=has_actual_stats,
         top_findings=findings[:12],
         nodes=sorted(node_summaries, key=lambda n: n.bottleneck_score, reverse=True),
         recommendations=recommendations,

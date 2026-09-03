@@ -27,11 +27,22 @@ is necessarily an approximation.
   memory spills, physical I/O, join strategy, and correlated subqueries -
   see the [rule catalog](ARCHITECTURE.md#rule-catalog).
 - **Plan tree visualizer** with per-node timing, row estimates, buffers,
-  and conditions.
+  and conditions, plus a **Flame/icicle view** showing proportionally
+  where execution time actually goes.
+- **Concrete `CREATE INDEX` suggestions** on access-path findings, not
+  just prose - best-effort, always review before running.
+- **Plan comparison**: paste a baseline and current plan and get a
+  node-by-node diff plus findings that newly appeared or resolved.
+- **`auto_explain` log ingestion**: paste a captured log excerpt and
+  analyze every plan in it at once, worst-runtime-first.
 - **Markdown report export** - paste into a ticket or runbook, with or
   without server-side history enabled.
 - **Optional analysis history** (SQLite-backed): save, browse, and
-  re-open past analyses.
+  re-open past analyses, grouped by a query fingerprint with a
+  runtime-trend sparkline.
+- **CI regression gate**: a `pgplanadvisor` console script runs the rule
+  engine against a plan file with no server needed, and can fail a build
+  on severity or a runtime regression vs. a baseline.
 - **Configurable rule thresholds** via environment variables - tune
   sensitivity without forking the analyzer.
 - **Optional API key auth** and **rate limiting** for shared/hosted
@@ -93,6 +104,7 @@ Every setting is an environment variable, prefixed `PGPA_`, all optional
 | `PGPA_LOG_JSON` | `false` | JSON-formatted logs (for log aggregators) instead of plain text |
 | `PGPA_CORS_ORIGINS` | `["*"]` | Allowed CORS origins, as a JSON array |
 | `PGPA_MAX_PLAN_BYTES` | `5000000` | Reject larger plan payloads with a 413 |
+| `PGPA_MAX_BATCH_ENTRIES` | `200` | Cap on plans processed per `POST /api/v1/analyze/batch` request |
 | `PGPA_API_KEY` | unset | If set, requires a matching `X-API-Key` header on `/api/v1/*` |
 | `PGPA_RATE_LIMIT_ENABLED` | `true` | Enable the in-memory rate limiter |
 | `PGPA_RATE_LIMIT_REQUESTS` / `PGPA_RATE_LIMIT_WINDOW_SECONDS` | `60` / `60` | N requests per window per client IP |
@@ -114,13 +126,38 @@ at `/docs` (Swagger) or `/redoc` once the backend is running.
 | `GET` | `/health` | Liveness check |
 | `POST` | `/api/v1/analyze` | Analyze a plan; `{"plan": ..., "query": "...", "save": false, "label": null}` |
 | `POST` | `/api/v1/analyze/export` | Analyze and return a Markdown report directly |
-| `GET` | `/api/v1/history` | List saved analyses (404 if history is disabled) |
+| `POST` | `/api/v1/compare` | Compare a `baseline` and `current` plan (both shaped like `/analyze`'s body); returns a node-by-node diff |
+| `POST` | `/api/v1/analyze/batch` | Analyze every plan found in a pasted `auto_explain` log excerpt; `{"log_text": "...", "save": false}` |
+| `GET` | `/api/v1/history` | List saved analyses (404 if history is disabled); optional `?fingerprint=` filter |
 | `GET` | `/api/v1/history/{id}` | Fetch one saved analysis |
 | `DELETE` | `/api/v1/history/{id}` | Delete one saved analysis |
 | `GET` | `/api/v1/history/{id}/export` | Saved analysis as a Markdown file |
 
 `plan` accepts EXPLAIN JSON (object, or the `[{...}]` array psql/JSON
 output produces), a JSON string, or text EXPLAIN output.
+
+## CI regression gate
+
+Installed as the `pgplanadvisor` console script, `app/cli.py` runs the
+same rule engine directly against a plan file - no server required:
+
+```bash
+pip install -e ".[dev]"   # or just ".", the CLI has no extra deps
+pgplanadvisor path/to/plan.json --fail-on-severity high
+pgplanadvisor current.json --baseline previous.json --max-regression-pct 10
+```
+
+Exits non-zero if a finding at or above `--fail-on-severity` is present,
+or (with `--baseline`) if total runtime regressed by more than
+`--max-regression-pct`. Example GitHub Actions step:
+
+```yaml
+- name: Check plan quality
+  run: |
+    pip install -e ".[dev]"
+    pgplanadvisor ci/queries/checkout.explain.json --fail-on-severity high
+  working-directory: backend
+```
 
 ## Testing
 
@@ -177,16 +214,18 @@ self-contained change.
 
 ## Roadmap
 
-Shipped in this pass: pluggable rule engine, six new advisory rules,
-configurable thresholds, optional auth/rate limiting, optional saved
-history, Markdown export, versioned API, structured logging, CI, and a
-much larger test suite.
+Shipped: pluggable rule engine, advisory rules (including `CREATE INDEX`
+suggestions and plan-only-input awareness), configurable thresholds,
+optional auth/rate limiting, optional saved history (with query
+fingerprinting and trend view), Markdown export, plan comparison,
+`auto_explain` log batch ingestion, a flame/icicle cost view, a CI
+regression-gate CLI, versioned API, structured logging, CI, and a large
+test suite.
 
 Still open:
 
 - `pg_stat_statements` integration (pull top queries from a live instance
   rather than only pasted EXPLAIN output)
-- Plan comparison (before/after a tuning change)
 - Index recommendation simulation (`HypoPG`-style hypothetical indexes)
 - PDF export (Markdown export is available today)
 - Kubernetes manifests

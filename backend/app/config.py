@@ -70,6 +70,11 @@ class Thresholds(BaseSettings):
     severity_high_score: float = 1000
     severity_medium_score: float = 100
 
+    # Plan comparison: how much worse (or better) total runtime must be,
+    # as a fraction of the baseline, before compare_plans calls it a
+    # regression/improvement rather than "unchanged".
+    compare_regression_pct: float = 0.10
+
 
 class Settings(BaseSettings):
     """Top-level service configuration."""
@@ -100,6 +105,7 @@ class Settings(BaseSettings):
     history_max_rows: int = 500
 
     max_plan_bytes: int = 5_000_000  # reject absurdly large payloads early
+    max_batch_entries: int = 200  # cap how many plans /analyze/batch will run per request
 
 
 @lru_cache
