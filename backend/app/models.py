@@ -37,7 +37,7 @@ class Finding(BaseModel):
     recommendation: str
     checks: list[str] = Field(default_factory=list)
     ddl_suggestion: str | None = Field(
-        None, description="Best-effort CREATE INDEX suggestion derived from the node's Filter/Index Cond, if any."
+        default=None, description="Best-effort CREATE INDEX suggestion derived from the node's Filter/Index Cond, if any."
     )
 
 

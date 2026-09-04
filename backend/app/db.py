@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from app.config import Settings
@@ -45,11 +45,9 @@ class HistoryStore:
             # A DB created before query_fingerprint existed won't have the
             # column yet - CREATE TABLE IF NOT EXISTS above is a no-op for
             # it, so add it explicitly. sqlite has no "ADD COLUMN IF NOT
-            # EXISTS", hence the try/except.
-            try:
+            # EXISTS", hence suppressing the error if it's already there.
+            with suppress(sqlite3.OperationalError):
                 conn.execute("ALTER TABLE analyses ADD COLUMN query_fingerprint TEXT")
-            except sqlite3.OperationalError:
-                pass
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
