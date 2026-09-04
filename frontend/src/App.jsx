@@ -1,12 +1,26 @@
-import { ClipboardList, DatabaseZap, Download, GitBranch, History, Settings as SettingsIcon, Sparkles } from "lucide-react";
+import {
+  ClipboardList,
+  DatabaseZap,
+  Download,
+  Flame,
+  GitBranch,
+  GitCompare,
+  History,
+  ScrollText,
+  Settings as SettingsIcon,
+  Sparkles,
+} from "lucide-react";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
+import BatchResults from "./components/BatchResults";
 import FindingCard from "./components/FindingCard";
 import HistoryPanel from "./components/HistoryPanel";
+import PlanDiff from "./components/PlanDiff";
+import PlanFlame from "./components/PlanFlame";
 import PlanTable from "./components/PlanTable";
 import PlanTree from "./components/PlanTree";
 import SettingsPanel from "./components/SettingsPanel";
-import { analyzePlan, downloadTextFile, exportMarkdown } from "./lib/api";
+import { analyzeBatchLog, analyzePlan, comparePlans, downloadTextFile, exportMarkdown } from "./lib/api";
 import { getSaveByDefault, setSaveByDefault } from "./lib/settings";
 import "./style.css";
 
@@ -60,6 +74,17 @@ function App() {
   const [label, setLabel] = useState("");
   const [showSettings, setShowSettings] = useState(false);
 
+  const [baselinePlanText, setBaselinePlanText] = useState("");
+  const [currentPlanText, setCurrentPlanText] = useState("");
+  const [compareResult, setCompareResult] = useState(null);
+  const [comparing, setComparing] = useState(false);
+  const [compareError, setCompareError] = useState("");
+
+  const [logText, setLogText] = useState("");
+  const [batchResult, setBatchResult] = useState(null);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchError, setBatchError] = useState("");
+
   async function run() {
     setLoading(true);
     setError("");
@@ -90,6 +115,35 @@ function App() {
   function toggleSave(checked) {
     setSave(checked);
     setSaveByDefault(checked);
+  }
+
+  async function runCompare() {
+    setComparing(true);
+    setCompareError("");
+    try {
+      const data = await comparePlans(
+        { planText: baselinePlanText, query: "" },
+        { planText: currentPlanText, query: "" }
+      );
+      setCompareResult(data);
+    } catch (e) {
+      setCompareError(String(e.message || e));
+    } finally {
+      setComparing(false);
+    }
+  }
+
+  async function runBatch() {
+    setBatchLoading(true);
+    setBatchError("");
+    try {
+      const data = await analyzeBatchLog(logText);
+      setBatchResult(data);
+    } catch (e) {
+      setBatchError(String(e.message || e));
+    } finally {
+      setBatchLoading(false);
+    }
   }
 
   return (
@@ -156,6 +210,15 @@ function App() {
             <button className={activeTab === "raw" ? "active" : ""} onClick={() => setActiveTab("raw")}>
               Raw JSON
             </button>
+            <button className={activeTab === "flame" ? "active" : ""} onClick={() => setActiveTab("flame")}>
+              <Flame size={16} /> Flame
+            </button>
+            <button className={activeTab === "compare" ? "active" : ""} onClick={() => setActiveTab("compare")}>
+              <GitCompare size={16} /> Compare
+            </button>
+            <button className={activeTab === "batch" ? "active" : ""} onClick={() => setActiveTab("batch")}>
+              <ScrollText size={16} /> Batch Log
+            </button>
             <button className={activeTab === "history" ? "active" : ""} onClick={() => setActiveTab("history")}>
               <History size={16} /> History
             </button>
@@ -166,7 +229,7 @@ function App() {
             )}
           </nav>
 
-          {!result && activeTab !== "history" && (
+          {!result && !["history", "compare", "batch"].includes(activeTab) && (
             <div className="hero panel">
               <h1>Explain PostgreSQL plans beautifully.</h1>
               <p>Paste DBA output from EXPLAIN ANALYZE and pgPlanAdvisor will highlight bottlenecks, checks, and remediation ideas.</p>
@@ -204,6 +267,75 @@ function App() {
               <h2>Normalized Plan JSON</h2>
               <pre className="json">{JSON.stringify(result.normalized_plan, null, 2)}</pre>
             </div>
+          )}
+
+          {result && activeTab === "flame" && <PlanFlame nodes={result.nodes} totalRuntimeMs={result.total_runtime_ms} />}
+          {!result && activeTab === "flame" && (
+            <div className="hero panel">
+              <h1>Nothing to show yet.</h1>
+              <p>Explain a plan first, then this tab shows a proportional view of where its time actually goes.</p>
+            </div>
+          )}
+
+          {activeTab === "compare" && (
+            <>
+              <div className="panel">
+                <h2>Compare two plans</h2>
+                <p className="hint">Paste a baseline (before) and current (after) EXPLAIN plan to see what changed.</p>
+                <div className="compare-inputs">
+                  <div>
+                    <label>Baseline plan</label>
+                    <textarea
+                      className="plan compare-textarea"
+                      value={baselinePlanText}
+                      onChange={(e) => setBaselinePlanText(e.target.value)}
+                      placeholder="Paste the 'before' EXPLAIN output"
+                    />
+                  </div>
+                  <div>
+                    <label>Current plan</label>
+                    <textarea
+                      className="plan compare-textarea"
+                      value={currentPlanText}
+                      onChange={(e) => setCurrentPlanText(e.target.value)}
+                      placeholder="Paste the 'after' EXPLAIN output"
+                    />
+                  </div>
+                </div>
+                <button
+                  className="primary-btn"
+                  onClick={runCompare}
+                  disabled={comparing || !baselinePlanText.trim() || !currentPlanText.trim()}
+                >
+                  <GitCompare size={16} /> {comparing ? "Comparing..." : "Compare Plans"}
+                </button>
+                {compareError && <pre className="error">{compareError}</pre>}
+              </div>
+              {compareResult && <PlanDiff comparison={compareResult} />}
+            </>
+          )}
+
+          {activeTab === "batch" && (
+            <>
+              <div className="panel">
+                <h2>Analyze an auto_explain log</h2>
+                <p className="hint">
+                  Paste captured log output containing one or more <code>duration: ... ms  plan:</code> entries
+                  (from <code>auto_explain</code> with <code>log_analyze</code> on) to analyze all of them at once.
+                </p>
+                <textarea
+                  className="plan"
+                  value={logText}
+                  onChange={(e) => setLogText(e.target.value)}
+                  placeholder="Paste auto_explain log output here"
+                />
+                <button className="primary-btn" onClick={runBatch} disabled={batchLoading || !logText.trim()}>
+                  <ScrollText size={16} /> {batchLoading ? "Analyzing..." : "Analyze Log"}
+                </button>
+                {batchError && <pre className="error">{batchError}</pre>}
+              </div>
+              {batchResult && <BatchResults data={batchResult} />}
+            </>
           )}
 
           {activeTab === "history" && (

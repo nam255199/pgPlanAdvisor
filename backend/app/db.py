@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from app.config import Settings
@@ -27,9 +27,11 @@ CREATE TABLE IF NOT EXISTS analyses (
     total_runtime_ms REAL NOT NULL,
     top_severity TEXT,
     finding_count INTEGER NOT NULL,
-    payload TEXT NOT NULL
+    payload TEXT NOT NULL,
+    query_fingerprint TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analyses_fingerprint ON analyses (query_fingerprint, created_at);
 """
 
 
@@ -40,6 +42,12 @@ class HistoryStore:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            # A DB created before query_fingerprint existed won't have the
+            # column yet - CREATE TABLE IF NOT EXISTS above is a no-op for
+            # it, so add it explicitly. sqlite has no "ADD COLUMN IF NOT
+            # EXISTS", hence suppressing the error if it's already there.
+            with suppress(sqlite3.OperationalError):
+                conn.execute("ALTER TABLE analyses ADD COLUMN query_fingerprint TEXT")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -55,8 +63,8 @@ class HistoryStore:
         with self._connect() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO analyses "
-                "(id, created_at, label, summary, total_runtime_ms, top_severity, finding_count, payload) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "(id, created_at, label, summary, total_runtime_ms, top_severity, finding_count, payload, query_fingerprint) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     result.id,
                     result.created_at.isoformat(),
@@ -66,6 +74,7 @@ class HistoryStore:
                     top_severity,
                     len(result.top_findings),
                     result.model_dump_json(),
+                    result.query_fingerprint,
                 ),
             )
             # Trim oldest rows beyond max_rows to keep this bounded on a
@@ -76,14 +85,18 @@ class HistoryStore:
                 (self.max_rows,),
             )
 
-    def list(self, limit: int = 50, offset: int = 0) -> tuple[list[HistoryListItem], int]:
+    def list(
+        self, limit: int = 50, offset: int = 0, fingerprint: str | None = None
+    ) -> tuple[list[HistoryListItem], int]:
+        where = " WHERE query_fingerprint = ?" if fingerprint else ""
+        params: tuple = (fingerprint,) if fingerprint else ()
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
-            total = conn.execute("SELECT COUNT(*) AS c FROM analyses").fetchone()["c"]
+            total = conn.execute(f"SELECT COUNT(*) AS c FROM analyses{where}", params).fetchone()["c"]
             rows = conn.execute(
-                "SELECT id, created_at, label, summary, total_runtime_ms, top_severity, finding_count "
-                "FROM analyses ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
+                "SELECT id, created_at, label, summary, total_runtime_ms, top_severity, finding_count, query_fingerprint "
+                f"FROM analyses{where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ).fetchall()
         items = [
             HistoryListItem(
@@ -94,6 +107,7 @@ class HistoryStore:
                 total_runtime_ms=r["total_runtime_ms"],
                 top_severity=r["top_severity"],
                 finding_count=r["finding_count"],
+                query_fingerprint=r["query_fingerprint"],
             )
             for r in rows
         ]

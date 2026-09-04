@@ -78,8 +78,10 @@ export async function exportMarkdown(planText, query) {
   return res.text();
 }
 
-export async function fetchHistory({ limit = 50, offset = 0 } = {}) {
-  const res = await request(`${V1}/history?limit=${limit}&offset=${offset}`);
+export async function fetchHistory({ limit = 50, offset = 0, fingerprint = null } = {}) {
+  const params = new URLSearchParams({ limit, offset });
+  if (fingerprint) params.set("fingerprint", fingerprint);
+  const res = await request(`${V1}/history?${params.toString()}`);
   return res.json();
 }
 
@@ -95,6 +97,25 @@ export async function deleteHistoryItem(id) {
 export async function exportHistoryItem(id) {
   const res = await request(`${V1}/history/${encodeURIComponent(id)}/export`);
   return res.text();
+}
+
+export async function comparePlans(baseline, current) {
+  const res = await request(`${V1}/compare`, {
+    method: "POST",
+    body: {
+      baseline: { plan: coercePlan(baseline.planText), query: baseline.query, label: baseline.label || null },
+      current: { plan: coercePlan(current.planText), query: current.query, label: current.label || null },
+    },
+  });
+  return res.json();
+}
+
+export async function analyzeBatchLog(logText, { save = false } = {}) {
+  const res = await request(`${V1}/analyze/batch`, {
+    method: "POST",
+    body: { log_text: logText, save },
+  });
+  return res.json();
 }
 
 export function downloadTextFile(filename, content, mime = "text/markdown") {

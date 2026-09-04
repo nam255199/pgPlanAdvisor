@@ -52,6 +52,32 @@ def test_get_unknown_id_is_404(history_client):
     assert r.status_code == 404
 
 
+def test_history_filters_by_query_fingerprint(history_client, fixture):
+    r1 = history_client.post(
+        "/api/v1/analyze",
+        json={"plan": fixture("seq_scan_heavy.json"), "query": "SELECT * FROM orders WHERE id = 1", "save": True},
+    )
+    r2 = history_client.post(
+        "/api/v1/analyze",
+        json={"plan": fixture("seq_scan_heavy.json"), "query": "SELECT * FROM orders WHERE id = 999", "save": True},
+    )
+    r3 = history_client.post(
+        "/api/v1/analyze",
+        json={"plan": fixture("healthy_plan.json"), "query": "SELECT * FROM customers WHERE id = 1", "save": True},
+    )
+    assert r1.status_code == r2.status_code == r3.status_code == 200
+    fingerprint = r1.json()["query_fingerprint"]
+    assert fingerprint is not None
+    assert r2.json()["query_fingerprint"] == fingerprint  # only the literal differs
+    assert r3.json()["query_fingerprint"] != fingerprint
+
+    r = history_client.get(f"/api/v1/history?fingerprint={fingerprint}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 2
+    assert all(item["query_fingerprint"] == fingerprint for item in body["items"])
+
+
 def test_history_is_bounded_by_max_rows(history_client, fixture, monkeypatch):
     # Re-create with a tiny max_rows to make the trim behavior cheap to test.
     monkeypatch.setenv("PGPA_HISTORY_MAX_ROWS", "2")

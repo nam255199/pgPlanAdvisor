@@ -174,6 +174,7 @@ td { color: #d9e4f7; }
   .input-card { position: static; }
   .topbar { flex-direction: column; }
   .columns { grid-template-columns: 1fr; }
+  .compare-inputs { grid-template-columns: 1fr; }
 }
 
 .cond {
@@ -369,3 +370,140 @@ td { color: #d9e4f7; }
   padding: 10px 12px;
   margin-top: 6px;
 }
+
+/* --- DDL suggestions (Finding cards) --- */
+.ddl-suggestion {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #315482;
+  border-radius: 14px;
+  background: rgba(2,6,23,.6);
+}
+.ddl-suggestion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.ddl-suggestion pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #a5f3fc;
+  font-size: 13px;
+}
+
+/* --- History: trend action + sparkline --- */
+.history-item-wrap { margin-bottom: 10px; }
+.history-item-wrap .history-item { margin-bottom: 0; }
+.history-item-actions { display: flex; align-items: center; gap: 6px; }
+.query-trend {
+  margin-top: 8px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #263750;
+  background: rgba(15,23,42,.5);
+}
+.query-trend h4 { margin: 0; }
+.sparkline { display: block; margin: 10px 0; }
+.query-trend-range {
+  display: flex;
+  justify-content: space-between;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+/* --- Compare tab --- */
+.compare-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.compare-inputs label { margin-top: 0; }
+.compare-textarea { min-height: 220px; }
+.verdict-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 14px;
+  vertical-align: middle;
+}
+.verdict-pill.verdict-regressed { background: rgba(239,68,68,.2); color: #fca5a5; border: 1px solid rgba(239,68,68,.4); }
+.verdict-pill.verdict-improved { background: rgba(34,197,94,.2); color: #86efac; border: 1px solid rgba(34,197,94,.4); }
+.verdict-pill.verdict-unchanged { background: rgba(148,163,184,.2); color: #cbd5e1; border: 1px solid rgba(148,163,184,.4); }
+
+.status-pill {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.status-pill.status-matched { background: rgba(96,165,250,.18); color: #93c5fd; }
+.status-pill.status-added { background: rgba(239,68,68,.18); color: #fca5a5; }
+.status-pill.status-removed { background: rgba(34,197,94,.18); color: #86efac; }
+
+.delta-worse { color: #fca5a5; font-weight: 700; }
+.delta-better { color: #86efac; font-weight: 700; }
+
+/* --- Batch log tab --- */
+.batch-parse-errors {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(239,68,68,.1);
+  border: 1px solid rgba(239,68,68,.3);
+  color: #fca5a5;
+}
+.batch-parse-errors h4 { margin: 0 0 6px; }
+.batch-list { display: flex; flex-direction: column; gap: 10px; }
+.batch-row {
+  border: 1px solid #263750;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(15,23,42,.5);
+}
+.batch-row-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: none;
+  border: 0;
+  color: #eef4ff;
+  cursor: pointer;
+  text-align: left;
+}
+.batch-row-summary { flex: 1; font-weight: 700; }
+.batch-row-meta { color: #94a3b8; font-size: 12px; white-space: nowrap; }
+.batch-row-body { padding: 0 14px 14px; }
+
+/* --- Flame / icicle view --- */
+.flame-chart {
+  position: relative;
+  width: 100%;
+  min-height: 34px;
+  margin-top: 12px;
+}
+.flame-block {
+  position: absolute;
+  height: 32px;
+  border: 1px solid rgba(2,6,23,.5);
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.flame-block span { overflow: hidden; text-overflow: ellipsis; }
+.flame-block.selected { outline: 2px solid #fff; outline-offset: -2px; }
+.flame-detail {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid #263750;
+  background: rgba(15,23,42,.5);
+}
+.flame-detail h3 { margin: 0; }

@@ -95,6 +95,41 @@ Why this shape:
 | `nested_loop_row_explosion` | Join strategy | The inner side of a Nested Loop re-executed thousands of times (plan-level N+1) |
 | `correlated_subquery_repeated` | Query shape | A `SubPlan`/correlated subquery re-evaluated once per outer row |
 | `text_explain_detected` | Input quality | Informational: input was text `EXPLAIN`, not `FORMAT JSON` |
+| `plan_only_no_analyze` | Input quality | Informational: plan has no actual execution stats (`EXPLAIN` without `ANALYZE`) - most other findings are skipped, not "clean" |
+
+`seq_scan_expensive` and `ineffective_index_scan` additionally attach a
+best-effort `ddl_suggestion` (a `CREATE INDEX ...` statement) built by
+`rules/sql_conditions.py`'s regex extraction of column names out of the
+node's `Filter`/`Index Cond` string - there's no real SQL parser here, so
+treat it as a starting point, not a verified fact.
+
+## Plan comparison
+
+`app/analyzer/compare.py`'s `compare_plans(baseline, current, thresholds)`
+takes two already-`analyze()`'d plans and matches nodes by `path` (the
+right notion of "the same node" for two runs of the same query shape).
+It's exposed via `POST /api/v1/compare` and reused by `app/cli.py`'s
+`--baseline` flag. A path that only exists on one side is reported as
+`added`/`removed` rather than force-matched to something else.
+
+## `auto_explain` log ingestion
+
+`app/analyzer/ingest.py` splits a pasted `auto_explain` log excerpt on its
+`duration: <ms> ms  plan:` marker lines and hands each entry's body
+straight to the existing `parser.parse_plan` (which already handles both
+JSON and text-EXPLAIN bodies) - no new plan-format parsing was needed,
+only finding where each entry starts and ends. Exposed via `POST
+/api/v1/analyze/batch`.
+
+## CLI / CI regression gate
+
+`app/cli.py` (installed as the `pgplanadvisor` console script) calls
+`analyzer.engine.analyze()` directly - no HTTP server involved - so a CI
+pipeline or shell script can gate on plan quality without standing up the
+API. `--fail-on-severity` gates on the worst finding severity;
+`--baseline <file>` additionally runs `compare_plans` and can fail on a
+runtime regression past `--max-regression-pct` (default: the
+`compare_regression_pct` threshold, 10%).
 
 ## Why SQLite for history, not Postgres
 

@@ -83,6 +83,9 @@ def parse_text_explain(text: str) -> dict[str, Any]:
     }
     root: dict[str, Any] = {
         "Plan": root_plan,
+        # None (not 0.0) when the line isn't present at all - this is how a
+        # plan-only EXPLAIN (no ANALYZE) is distinguished from one that
+        # legitimately executed in ~0ms; see has_actual_stats in engine.py.
         "Execution Time": _extract_float(text, r"Execution Time:\s*([0-9.]+)\s*ms"),
         "Planning Time": _extract_float(text, r"Planning Time:\s*([0-9.]+)\s*ms"),
         "Query Identifier": _extract_text(text, r"Query Identifier:\s*([0-9]+)"),
@@ -278,14 +281,14 @@ def _parse_buffers_line(value: str) -> dict[str, float]:
     return out
 
 
-def _extract_float(text: str, pattern: str) -> float:
+def _extract_float(text: str, pattern: str) -> float | None:
     m = re.search(pattern, text)
     if not m:
-        return 0.0
+        return None
     try:
         return float(m.group(1))
     except Exception:
-        return 0.0
+        return None
 
 
 def _extract_text(text: str, pattern: str) -> str | None:

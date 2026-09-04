@@ -36,6 +36,9 @@ class Finding(BaseModel):
     evidence: list[str]
     recommendation: str
     checks: list[str] = Field(default_factory=list)
+    ddl_suggestion: str | None = Field(
+        default=None, description="Best-effort CREATE INDEX suggestion derived from the node's Filter/Index Cond, if any."
+    )
 
 
 class PlanNodeSummary(BaseModel):
@@ -76,9 +79,11 @@ class AnalyzeResponse(BaseModel):
     app_version: str = "2.0.0"
     label: str | None = None
     query: str | None = None
+    query_fingerprint: str | None = None
     summary: str
     total_runtime_ms: float
     planning_time_ms: float
+    has_actual_stats: bool = True
     top_findings: list[Finding]
     nodes: list[PlanNodeSummary]
     recommendations: list[str]
@@ -95,6 +100,7 @@ class HistoryListItem(BaseModel):
     total_runtime_ms: float
     top_severity: Severity | None = None
     finding_count: int
+    query_fingerprint: str | None = None
 
 
 class HistoryListResponse(BaseModel):
@@ -105,3 +111,46 @@ class HistoryListResponse(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
     error_type: str = "analysis_error"
+
+
+class NodeDelta(BaseModel):
+    path: str
+    node_type: str
+    relation: str | None = None
+    status: str  # "matched" | "added" | "removed"
+    baseline_time_ms: float | None = None
+    current_time_ms: float | None = None
+    time_delta_ms: float | None = None
+    time_delta_pct: float | None = None
+    baseline_rows: float | None = None
+    current_rows: float | None = None
+    rows_delta_pct: float | None = None
+
+
+class CompareRequest(BaseModel):
+    baseline: AnalyzeRequest
+    current: AnalyzeRequest
+
+
+class CompareResponse(BaseModel):
+    id: str = Field(default_factory=lambda: uuid4().hex)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    baseline: AnalyzeResponse
+    current: AnalyzeResponse
+    runtime_delta_ms: float
+    runtime_delta_pct: float | None = None
+    verdict: str  # "regressed" | "improved" | "unchanged"
+    node_deltas: list[NodeDelta]
+    findings_added: list[Finding]
+    findings_resolved: list[Finding]
+
+
+class BatchAnalyzeRequest(BaseModel):
+    log_text: str = Field(..., description="Raw auto_explain log content containing one or more plans.")
+    save: bool = Field(False, description="If history persistence is enabled, save each parsed analysis.")
+
+
+class BatchAnalyzeResponse(BaseModel):
+    entries_found: int
+    results: list[AnalyzeResponse]
+    parse_errors: list[str]
